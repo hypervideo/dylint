@@ -33,7 +33,7 @@ fn main() -> Result<()> {
 }
 
 fn linker() -> Result<PathBuf> {
-    let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN)?;
+    let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN).unwrap_or_else(|_| "stable".to_owned());
     let target = parse_toolchain(&rustup_toolchain)
         .map_or_else(|| env!("TARGET").to_owned(), |(_, target)| target);
     let cargo_home = cargo_home().with_context(|| "Could not determine `CARGO_HOME`")?;
@@ -62,7 +62,7 @@ fn linker() -> Result<PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn default_linker() -> Result<PathBuf> {
-    let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN)?;
+    let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN).unwrap_or_else(|_| "stable".to_owned());
     if rustup_toolchain.split('-').last() == Some("msvc") {
         // MinerSebas: Removes the Release Information: "nightly-2021-04-08-x86_64-pc-windows-msvc"
         // -> "x86_64-pc-windows-msvc"
@@ -156,7 +156,7 @@ fn copy_library(path: &Path) -> Result<()> {
         let cargo_pkg_name = env::var(env::CARGO_PKG_NAME)?;
         if lib_name == cargo_pkg_name.replace('-', "_");
         then {
-            let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN)?;
+            let rustup_toolchain = env::var(env::RUSTUP_TOOLCHAIN).unwrap_or_else(|_| "stable".to_owned());
             let filename_with_toolchain = library_filename(&lib_name, &rustup_toolchain);
             let parent = path
                 .parent()
