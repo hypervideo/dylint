@@ -12,7 +12,7 @@ use std::{
     fs::{copy, create_dir_all, rename, write},
     path::{Path, PathBuf},
 };
-use tempfile::{tempdir, NamedTempFile};
+use tempfile::{tempdir, tempdir_in, NamedTempFile};
 
 include!(concat!(env!("OUT_DIR"), "/dylint_driver_manifest_dir.rs"));
 
@@ -86,6 +86,7 @@ pub fn get(opts: &opts::Dylint, toolchain: &str) -> Result<PathBuf> {
     }
 
     let driver = driver_dir.join("dylint-driver");
+    log::info!("[driver_builder] driver: {}", driver.to_string_lossy());
     if !driver.exists() || is_outdated(opts, toolchain, &driver)? {
         build(opts, toolchain, &driver_dir)?;
     }
@@ -153,7 +154,19 @@ fn build(opts: &opts::Dylint, toolchain: &str, driver_dir: &Path) -> Result<()> 
         .no_deps()
         .exec()?;
 
-    let toolchain_path = toolchain_path(package)?;
+    let stdout = std::process::Command::new("which")
+        .arg("rustc")
+        .logged_output(false)
+        .context("`which rustc` failed")?
+        .stdout;
+    let path = String::from_utf8(stdout).context("`String::from_utf8` failed")?;
+    let toolchain_path = PathBuf::from(path)
+        .parent()
+        .context("Could not determine toolchain path")?
+        .to_path_buf()
+        .parent()
+        .context("Could not determine toolchain path")?
+        .to_path_buf();
 
     // smoelius: The commented code was the old behavior. It would cause the driver to have rpaths
     // like `$ORIGIN/../../`... (see https://github.com/trailofbits/dylint/issues/54). The new
@@ -165,10 +178,14 @@ fn build(opts: &opts::Dylint, toolchain: &str, driver_dir: &Path) -> Result<()> 
         toolchain_path.to_string_lossy()
     );
 
-    #[cfg(debug_assertions)]
+    log::info!("[driver_builder]\n  toolchain={toolchain}\n  package={package:?}\n  tempdir={tempdir:?}\n  driver_dir={driver_dir:?}\n  toolchain_path={toolchain_path:?}\nrustflags=`{rustflags}`");
+
+    // #[cfg(debug_assertions)]
     if DYLINT_DRIVER_MANIFEST_DIR.is_none() {
         warn(opts, "In debug mode building driver from `crates.io`");
     }
+
+    log::info!("----------------------------------");
 
     dylint_internal::cargo::build(&format!("driver for toolchain `{toolchain}`"))
         .quiet(opts.quiet)
@@ -177,6 +194,8 @@ fn build(opts: &opts::Dylint, toolchain: &str, driver_dir: &Path) -> Result<()> 
         .envs([(env::RUSTFLAGS, rustflags)])
         .current_dir(package)
         .success()?;
+
+    log::info!("----------------------------------");
 
     let binary = metadata
         .target_directory
@@ -195,6 +214,7 @@ fn build(opts: &opts::Dylint, toolchain: &str, driver_dir: &Path) -> Result<()> 
     })?;
 
     let driver = driver_dir.join("dylint-driver");
+    log::info!("[driver_builder] 2 driver: {}", driver.to_string_lossy());
 
     // smoelius: Windows requires that the old file be moved out of the way first.
     if cfg!(target_os = "windows") {
